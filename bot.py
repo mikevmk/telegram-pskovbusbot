@@ -11,12 +11,12 @@ import requests
 from bs4 import BeautifulSoup
 import re
 
-token='XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX'
+token='XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX'
 
 myconf = {
     'host': 'localhost',
     'user': 'bus',
-    'password': 'XXXXXXXXXXX',
+    'password': 'XXXXXXXXXXXX',
     'port': 3306,
     'db': 'bus',
 }
@@ -27,30 +27,35 @@ urls = {
 }
 
 messages = {
-    'help': 'Вся информация берется с официального сайта Псковпассажиравтотранса http://online.pskovbus.ru, \
-где она рассчитывается из данных о настоящем местоположении автобуса (GPS-трек) и его примерной скорости, \
-поэтому полученное время прибытия автобуса может незначительно изменяться с течением времени. \
-Пишите о найденных багах @mikevmk. Отправьте /start для начала работы',
+    'help': 'Вся информация берется с официального сайта Псковпассажиравтотранса online.pskovbus.ru, \n\
+где она рассчитывается из данных о настоящем местоположении автобуса (GPS-трек) и его примерной скорости, \n\
+поэтому полученное время прибытия автобуса может незначительно изменяться с течением времени. \n\
+Пишите о найденных в работе бота багах @mikevmk. Оставляйте жалобы на неточное расписание на сайте \n\
+online.pskovbus.ru в разделе Ещё -> Написать разработчикам \n\
+ \n\
+Отправьте /start для начала работы',
     'easter_egg': 'Бип-бип... Убить всех человеков... Должен убить всех человеков...\n...\n...\n\
 О, человек! Мне снился прекрасный сон! И ты там был ;-)',
     'choose_route': 'Выберите маршрут 🚍. Для получения справки отправьте /help',
     'choose_direction': 'Выберите направление для маршрута 🚍 № ',
     'choose_station_short': 'Выберите остановку:',
     'choose_station_long': 'Выберите остановку для 🚍 № ',
-    'answer_nothing_found': 'Ничего не нашлось. Попробуйте уточнить запрос',
+    'answer_nothing_found': 'Ничего не нашлось. Попробуйте уточнить запрос или используйте команду /start для легкой навигации',
     'answer_toomuch': 'Слишком много результатов. Попробуйте уточнить запрос',
-    'answer_server_error': '⚠️ Ошибка: сервер Псковпассажиравтотранса временно недоступен',
-    'answer_nothing_returned': 'Псковпассажиравтотранс не вернул данных по этой остановке',
-    'button_start': '⏪ В начало',
-    'button_support': '🐞 Багрепорт',
+    'answer_server_error': '⚠️ Ошибка: сервер Псковпассажиравтотранса online.pskovbus.ru временно недоступен\n\nПопробуйте посмотреть статические расписания на https://www.pskovbus.ru/?r=2',
+    'answer_nothing_returned': 'Псковпассажиравтотранс не вернул данных по этой остановке\n\nПопробуйте посмотреть статические расписания на https://www.pskovbus.ru/?r=2',
+    'button_start': '⏪ ',
+    'button_support': '🆘 ',
     'button_direction': ' 👉 ' ,
-    'button_refresh': '🔄 Обновить',
-    'board_prefix': '🚌 ',
-    'board_middle': ' 🕒',
+    'button_refresh': '🔄 ',
+    'button_coffee': '☕☕',
+    'board_prefix': ' 🚌 ',
+    'board_middle': '🕒 ',
     'board_disabled': ' ♿',
-    'board_header_long': 'Расписание для маршрута 🚍 № ',
+    'board_header_long': '💉🦠💉 ☎299028 или gosuslugi.ru\n\nРасписание для маршрута 🚍 № ',
     'board_header_short': 'Расписание 🚍',
     'board_header_suffix': ' по остановке ',
+    'coffee': 'Угостить меня чашечкой ☕ можно через Сбербанк.Online по 📱 +79517516942\n\nОтправьте /start для начала работы',
 }
 
 def mysql_connect():
@@ -70,13 +75,26 @@ def mysql_close(myconn, cursor):
     cursor.close()
     myconn.close()
 
+def log_request(message,update):
+    try:
+	    telegram_username = update.message.from_user.username
+	    telegram_firstname = update.message.from_user.first_name
+	    telegram_lastname = update.message.from_user.last_name
+	    telegram_id = update.message.from_user.id
+    except:
+	    telegram_username = update.callback_query.from_user.username
+	    telegram_firstname = update.callback_query.from_user.first_name
+	    telegram_lastname = update.callback_query.from_user.last_name
+	    telegram_id = update.callback_query.from_user.id
+    logger.info(message + ' %s %s (%s %s)', telegram_id, telegram_username, telegram_firstname, telegram_lastname)
+
 def start_callback(update, context):
-    logger.info('/start')
+    log_request('/start from', update)
     reply_markup = main_menu(routes_active)
     update.message.reply_text(messages['choose_route'], reply_markup=reply_markup)
 
 def help_callback(update, context):
-    logger.info('/help')
+    log_request('/help from', update)
     update.message.reply_text(messages['help'])
 
 def message_callback(update, context):
@@ -84,7 +102,7 @@ def message_callback(update, context):
         user_message=update.message.text
     except:
         return
-    logger.info('Update message: "%s"', user_message)
+    log_request('Update message: ' + user_message, update)
     if user_message in routes_active:
         myconn, cursor = mysql_connect()
         query = 'SELECT route_id FROM routes WHERE route=%s'
@@ -107,7 +125,7 @@ def message_callback(update, context):
             board, route, station = get_board(station_ids[0], "0")
             board = messages['board_header_short'] + messages['board_header_suffix'] + '*' + station + "*\n\n" + board
             markup = []
-            markup.append([InlineKeyboardButton(messages['button_start'], callback_data='start'),InlineKeyboardButton(messages['button_refresh'], callback_data='station,' + str(station_ids[0]) + ',0'),InlineKeyboardButton(text=messages['button_support'], url=urls['support'])])
+            markup.append([InlineKeyboardButton(messages['button_start'], callback_data='start'),InlineKeyboardButton(messages['button_refresh'], callback_data='station,' + str(station_ids[0]) + ',0'),InlineKeyboardButton(text=messages['button_support'], callback_data='sos'),InlineKeyboardButton(text=messages['button_coffee'],callback_data='coffee')])
             reply_markup = InlineKeyboardMarkup(markup)
             update.message.reply_text(board, reply_markup=reply_markup, parse_mode='markdown')
         elif len(station_ids) > 20:
@@ -129,7 +147,7 @@ def error(update, context):
 
 def query_callback(update, context):
     query = update.callback_query
-    logger.info('Query data: "%s"', query.data)
+    log_request(query.data, update)
     query_data = query.data.split(",")
     if query_data[0] == 'station':
         station_id = query_data[1]
@@ -142,9 +160,9 @@ def query_callback(update, context):
         else:
             board = messages['board_header_long'] + "*" + route + "*" + messages['board_header_suffix'] + "*" + station + "*\n\n" + board
         markup = []
-        markup.append([InlineKeyboardButton(messages['button_start'], callback_data='start'),InlineKeyboardButton(messages['button_refresh'], callback_data='station,' + str(station_id) + ',' + route_id),InlineKeyboardButton(text=messages['button_support'], url=urls['support'])])
+        markup.append([InlineKeyboardButton(messages['button_start'], callback_data='start'),InlineKeyboardButton(messages['button_refresh'], callback_data='station,' + str(station_id) + ',' + route_id),InlineKeyboardButton(text=messages['button_support'], callback_data='sos'),InlineKeyboardButton(text=messages['button_coffee'],callback_data='coffee')])
         reply_markup = InlineKeyboardMarkup(markup)
-        context.bot.send_message(query.message.chat_id, board, reply_markup=reply_markup, parse_mode='markdown')
+        context.bot.send_message(query.message.chat_id, board, reply_markup=reply_markup, parse_mode='markdown', disable_web_page_preview=True)
     elif query_data[0] == 'route':
         route_id = query_data[1]
         reply_markup, route = directions_menu(route_id)
@@ -157,6 +175,10 @@ def query_callback(update, context):
     elif query_data[0] == 'start':
         reply_markup = main_menu(routes_active)
         context.bot.send_message(query.message.chat_id, messages['choose_route'], reply_markup=reply_markup)
+    elif query_data[0] == 'coffee':
+        context.bot.send_message(query.message.chat_id, messages['coffee'])
+    elif query_data[0] == 'sos':
+        context.bot.send_message(query.message.chat_id, messages['help'])
     query.answer()
 
 def get_board(station_id, route_id):
@@ -173,12 +195,12 @@ def get_board(station_id, route_id):
     mysql_close(myconn, cursor)
     station_url = urls['station'] + str(station_id)
     try:
-        r = requests.get(station_url)
+        r = requests.get(station_url,timeout=3)
     except:
         board = messages['answer_server_error']
         return board, route_cur, station
     soup = BeautifulSoup(r.text.encode('utf-8'), "lxml")
-    routes_board, times_board, directions_board = [], [], []
+    routes_board, times_board, directions_board, disabled_board = [], [], [], []
     for routes_row in soup.find_all(href=re.compile("^\?mr_id=[0-9]+$")):
         routes_board.append(str(routes_row.text.strip()))
     for directions_row in soup.find_all(href=re.compile("^\?mr_id=[0-9]+&rl_racetype=[0-9]+$")):
@@ -187,17 +209,18 @@ def get_board(station_id, route_id):
         parent_td = times_row.parent.parent
         if parent_td.find(nowrap='nowrap'):
             parent_td = times_row.parent.parent.parent.parent.parent
+        times_board.append(str(times_row.text.strip()))
         if parent_td.find('img'):
-            times_board.append(str(times_row.text.strip()) + messages['board_disabled'])
+            disabled_board.append(messages['board_disabled'])
         else:
-            times_board.append(str(times_row.text.strip()))
+            disabled_board.append('')
     board = "" 
     for index, route in enumerate(routes_board):
         if route in routes_active:
             if route == route_cur:
-                board += messages['board_prefix'] + "*" + route + messages['button_direction'] + directions_board[index] + messages['board_middle'] + times_board[index] + "*\n"
+                board += "*" + messages['board_middle'] + times_board[index] + messages['board_prefix'] + route + messages['button_direction'] + directions_board[index] + disabled_board[index] + "*\n"
             elif index < 16:
-                board += messages['board_prefix'] + route + messages['button_direction'] + directions_board[index] + messages['board_middle'] + times_board[index] + "\n"
+                board += messages['board_middle'] + times_board[index] + messages['board_prefix'] + route + messages['button_direction'] + directions_board[index] + disabled_board[index] + "\n"
     return board, route_cur, station
 
 def main_menu(routes):
